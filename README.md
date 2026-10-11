@@ -1,266 +1,156 @@
-# HomeControl — personal Garmin dashboard
+# HomeControl for Garmin
 
-Status-first Home Assistant controls for selectable doors, lights and fans groups, each with a bulk action followed by individual controls. See [setup, authentication changes and build instructions](HOME_SETUP.md).
+A status-first Home Assistant widget for Garmin watches, adapted from [wroblisko/hasscontrol](https://github.com/wroblisko/hasscontrol). This fork is developed and tested on **Enduro 3**.
 
-The upstream HassControl documentation follows below; the new Home screen is the default in this fork.
+The default screen shows **Doors, Lights and Fans**. Open a group to use its bulk action first, then scroll through individual devices. The interface is deliberately simple for a watch screen, with light and dark home-screen options.
 
----
+## Daily use
 
-## HassControl
+| Group | Summary | First control |
+| --- | --- | --- |
+| Doors | Locked, unlocked and unknown lock states | **Lock all** |
+| Lights | Number on and number unknown | **Turn all off** |
+| Fans | Number on and number unknown | **Turn all off** |
 
-A garmin widget to interact with [Home Assistant](https://www.home-assistant.io/).
+- **Tap a group**, or use **Up/Down → Select**, to open it.
+- The first card is the group action. Scroll to individual devices and tap/press Select to control them.
+- **Back** returns to the groups. **Menu/long press** opens refresh, settings and the legacy entity/scene views.
+- **Refresh status** reads the devices already imported. **Settings → Refresh entities** updates group membership from Home Assistant.
+- **Settings → Start View → Groups** restores the default view if you previously selected Entities or Scenes.
 
+Bulk actions apply only to imported devices of that group’s type. Lights and fans receive explicit `turn_off` commands; locks receive `lock` commands. There is no bulk-unlock action or combined all-off menu item. Commands run sequentially and stop at the first failure, so an action can be partially completed. The widget reads states back afterward.
 
-<img src="resources/screenshots/tactix_delta_1.png" height="250" />
+Door status represents **lock state**, not whether a door is physically closed. Counts refer to imported entities: a Home Assistant light-group entity counts as one, regardless of how many bulbs it contains. Import individual devices for individual controls and counts.
 
+## Install this fork
 
-The widget aims to be simplistic but still provide the most basic functionality, such as triggering scenes or toggling lights and switches.
+The upstream Connect IQ Store listing installs upstream HassControl, **not this version**. This fork has a separate application ID and can coexist with it.
 
-Due to limitations by both Garmin and Apple/Android some setup steps will be more cumbersome than what I would have preferred.
+1. Open [GitHub Actions](https://github.com/GL-C/hasscontrol/actions/workflows/ci.yml) and choose a successful **Enduro 3 build**.
+2. Download the **hasscontrol-enduro3** artifact and extract the ZIP.
+3. Connect your Enduro 3 to your Windows PC by USB and copy `hasscontrol-enduro3.prg` into **GARMIN/APPS** on the watch.
+4. Disconnect the watch and open HomeControl.
 
-Please read through the instructions below, I will try to guide you through the steps :)
+GitHub may require you to sign in to download artifacts. CI artifacts use a temporary development signing key; use your own stable key for ongoing personal builds. Other inherited device targets remain in the manifest, but this fork’s CI and on-device checks target Enduro 3.
 
-- [HassControl](#hasscontrol)
-  - [Prerequisites](#prerequisites)
-  - [Supported entity types](#supported-entity-types)
-  - [Installation](#installation)
-  - [Configuration](#configuration)
-    - [Basic Settings](#basic-settings)
-    - [Entity Synchronization](#entity-synchronization)
-    - [Battery and Performance](#battery-and-performance)
-    - [Authentication Options](#authentication-options)
-  - [Logging in](#logging-in)
-  - [Group sync](#group-sync)
-  - [Navigation \& Controls](#navigation--controls)
-  - [Header Authentication](#header-authentication)
-  - [FAQ](#faq)
-    - [Unknown error -300 - Self-Signed SSL Certificate](#unknown-error--300---self-signed-ssl-certificate)
-    - [Error message: "Check settings, invalid url"](#error-message-check-settings-invalid-url)
-    - [Some entities from my group are missing in my Garmin device](#some-entities-from-my-group-are-missing-in-my-garmin-device)
-    - [Changed entity state doesn't show immediately in HassControl](#changed-entity-state-doesnt-show-immediately-in-hasscontrol)
+## Connect to Home Assistant
 
+You need a paired phone with Garmin Connect running and an HTTPS Home Assistant address that the phone can reach, with a trusted certificate. Network requests depend on that connection.
 
-### Prerequisites
-In order to use this widget you need to have an Home Assistant instance accessible over https using an official SSL certificate (no self-signed).
+Configure the widget’s app settings through Garmin Connect/Connect IQ where available. For a personal sideload build, defaults can also be set in `widget/resources/properties.xml` before compiling; keep credentials out of committed source.
 
-As all communication from Garmin watches go thru the mobile device, you also need to have a paired mobile phone, and the Garmin Connect app needs to be running on that phone.
+1. Set **Host** to your Home Assistant HTTPS origin, for example `https://ha.example.com`, without a path or query string.
+2. Set **Group** to `garmin` or `group.garmin` for the example below.
+3. Open **Menu → Login** on the watch and complete the Home Assistant sign-in on your paired phone. Opening a group while signed out also starts login.
+4. Open **Settings → Refresh entities** to import the group.
 
-As soon as you get out of range from the phone or closes the app the widget will stop functioning.
+### Create the import group
 
+The widget imports a legacy Home Assistant `group` with an `entity_id` member list. Use YAML rather than a domain-specific light/fan group helper.
 
-### Supported entity types
-Currently only following Home Assistant entities are supported:
+If `configuration.yaml` already contains `group: !include groups.yaml`, put this in `groups.yaml`:
 
-Entity type | Note
---- | ---
-binary_sensor | Only displays basic boolean state, device class is not supported.
-input_boolean | Toggling of its state is supported.
-light | Only turning on/off is supported, the rest like colour, brightness, etc. are not supported.
-button | Push/Trigger a button
-input_button | Push/Trigger an input button
-lock | Both locking and unlocking are supported.
-cover | Both closing and opening the cover is supported.
-fan | Turning on and off is supported. Changing speed is not.
-switch | Only turning on/off, energy consumption and standby mode are not supported.
-automation* | Can be turned on/off.
-scene* | Execution
-script* | Execution
-sensor | Display values for the following sensor types: temperature, humidity, CO2, PM10, PM25, energy, gas and water (others will be displayed but won't have a proper icon).
-
-
-\* marked are not entities in the true sense of the word, but why have two tables
-
-### Installation
-The easiest way to install the app is to download and install the [ConnectIQ app](https://support.garmin.com/en-US/?faq=mmm2rz2WBI3zbdFQYdiwX8) from Garmin on your smartphone.
-
-Once you have the app installed on your paired phone you can browse for widget and find the app by name, [HassControl](https://apps.garmin.com/en-US/apps/3dce2242-473f-4f13-a6a9-299c3686611f).
-
-### Configuration
-Open the widget settings in the ConnectIQ app.
-[How to Access the Settings of a Connect IQ App Using the Garmin Connect App](https://support.garmin.com/en-US/?faq=SPo0TFvhQO04O36Y5TYRh5)
-
-#### Basic Settings
-
-**Host**: This should be the url to the Home Assistant instance you would like to control. Remember only https url is supported by Garmin.
-
-**Long-Lived access token**: If you prefer generating an access token in Home Assistant instead of login in thru the garmin app you can paste your token here.
-
-#### Entity Synchronization
-
-**Scenes**: Since scene names aren't that configurable in Home Assistant you can override the names in this box. Multiple overrides can be specified by separating them with a comma (,).
-
-So for example; If you have the scene `scene.good_bye` and `scene.movie` the configuration string could look like this: `good_bye=Good Bye, movie=Movie`, or `good_bye, movie`.
-
-You can also use this field to "import" scenes if you don't want to create a group in Home Assistant as described below.
-
-**Group**: In this box you can write a single group from Home Assistant, this group can then be used from within the widget to import all entities contained in that group.
-
-I will describe this procedure in more detail below.
-
-***Note:*** *The default start view is filtered to scenes and will not show light, switches etc., the start view can be changed in the widget settings in your Garmin device.*
-
-#### Battery and Performance
-
-**Refresh on show**: When enabled, the widget will refresh entity states every time it's opened. This provides more up-to-date information but uses more battery and network resources.
-
-**Close after action**: When enabled, the widget will automatically close after successfully controlling an entity (turning a light on/off, activating a scene, etc.). This can save battery but requires reopening the widget for additional actions.
-
-**Auto-close after inactivity**: Configure the number of seconds of inactivity after which the app will automatically close. Set to 0 to disable this feature (default). Valid range is 0-300 seconds. This helps conserve battery by ensuring the widget doesn't stay open indefinitely.
-
-**Battery percentage reporting**: Configure an arbitrary entity name (a-z, 0-9, _) to which the battery status of the watch should be reported.
-e.g., "venu2_battery" (**excluding** the "sensor." prefix)
-The battery value is being sent to Home Assistant once - when the app is started.
-The corresponding entity is created automatically (e.g., "sensor.venu2_battery").
-
-***Optionally***, you can configure a dedicated entity **before** the first use:
-
+```yaml
+garmin:
+  name: Garmin
+  entities:
+    - lock.front_door
+    - light.living_room
+    - light.kitchen
+    - fan.living_room
 ```
-- template
-  - sensor:
-      - name: My Garmin Device
-        device_class: "battery"
-        unit_of_measurement: "%"
-        state: 0
-        unique_id: MyGarminDevice123
-```
-Then enter the corresponding entity name in the ConnectIQ app settings (excluding the "sensor." prefix)
-e.g., "my_garmin_device"
 
-#### Authentication Options
+Otherwise, add it under a `group:` key in `configuration.yaml`, merging with any existing group configuration:
 
-**Additional HTTP(S) Header - Key/Value**: These two fields allow you to specify a custom HTTP header to be added to all requests from the widget to Home Assistant. This can be used for additional authentication or for passing custom information to proxy servers. See the [Header Authentication](#header-authentication) section for more details.
-
-### Logging in
-Once you have configured all settings in the ConnectIQ app, the next step will be to login.
-
-***Note:*** *If you've setup the `Long-Lived access token` you should be logged in automatically and can skip to the next section.*
-
-Since the watch doesn't have an suited interface for logging in to web pages, the login will be performed with the help of your paired smartphone.
-
-Before you get started, make sure that you have installed and paired your watch in the [Garmin Connect](https://connect.garmin.com/start/) app.
-
-If you don't have push notifications turned on, make sure the app is running before proceeding.
-
-To login, simply open the widget and trigger any scene. Shortly after, you will see a sign in request on your smartphone. Complete the sign in process on your phone and return to the watch.
-
-You should now be able to trigger your scenes.
-
-If you don't have any scenes, you can login by pressing and holding on the screen (long press) or using the menu button on your watch and logging in from the widget menu.
-
-If you don't see any login request on your phone. Restart the widget after you have opened the garmin Connect app and the watch has been connected.
-
-If you are having problems logging in or if the widget is logged out frequently, you can also generate a `Long-Lived access token` for your user in Home Assistant and paste it to the Connect IQ settings. This will bypass the normal login flow and use that token to communicate with Home Assistant.
-
-
-### Group sync
-Due to the limitations of the watch, there is no really good way of listing and adding entities directly from the watch.
-But the easiest way to add your entities is by [creating a new group](https://www.home-assistant.io/integrations/group/#old-style-groups) in Home Assistant, and add all your entities there. **Note that "old style groups" MUST be used, and cannot be edited with the "groups" UI.**
-
-Your group configuration can look like this:
-```
-# Example configuration.yaml entry
+```yaml
 group:
   garmin:
     name: Garmin
     entities:
-      - light.bathroom
-      - switch.tv
-      - script.turn_lights_for_10_min
-```
-Or if your `configuration.yaml` looks like `group: !include groups.yaml`, omit the leading `group:`
-```
-# Example groups.yaml entry
-garmin:
-  name: Garmin
-  entities:
-    - light.bathroom
-    - switch.tv
-    - script.turn_lights_for_10_min
-```
-***Note***: *Remember after changing the configuration, you have to either reload the groups or restart the Home Assistant.*
-
-Then write the id of the group you have just created (in our case `group.garmin`) into the ConnectIQ app widget settings as described [above](#configuration).
-
-Once you have added the group into ConnectIQ app widget settings, open the widget on your Garmin device and access the menu (either by using a long press on the screen or pressing the menu button). Then go into `Settings` and select `Refresh entities`.
-Once that is done, all entities added to that group in Home Assistant and supported by HassControl will be imported and available on the watch.
-
-If you done some modification to the group in Home Assistant, you can at any time repeat this procedure to add, update or remove entities from your watch.
-
-### Navigation & Controls
-
-The widget is designed to be as simple as possible, but there are a few things to keep in mind.
-
-- **Scrolling**: Depending on your watch model, you can scroll through the widget using the touchscreen or the up/down buttons. If your watch has a touchscreen, you can also use the swipe gesture to scroll.
-- **Selecting an entity**: To select an entity, simply scroll to it and press the "Select" button (usually the middle button on the right side of the watch).
-- **Toggling a switch or light**: To toggle a switch or light, select the entity and press the "Select" button again. The entity should now be toggled on or off.
-- **Triggering a scene or script**: To trigger a scene or script, select the entity and press the "Select" button. The scene or script should now be executed.
-- **Refreshing entities**: If you have made changes to your entities in Home Assistant and want to update the widget, you can select the "Refresh entities" option in the widget menu. This will reload all entities from Home Assistant.
-
-HassControl also supports the following controls:
-
-- **Single tap/press**: Toggle the current entity (turn lights on/off, activate scenes, etc.)
-- **Menu button**: Open the menu
-- **Long press**: Open the menu (alternative to using the menu button)
-- **Swipe/Page buttons**: Navigate between entities
-
-On touchscreen devices, the long press gesture provides a convenient way to access the menu without using the physical menu button.
-
-### Header Authentication
-
-Since `v1.5.0` it's possible to specify an arbitraty header in the settings.
-It's being added to all requests from the ConnectIQ device.
-This can serve for authentication - e.g., like available for Cloudflare: https://developers.cloudflare.com/workers/examples/auth-with-headers/
-
-If you use Caddy, you can implement this in the following way:
-
-```
-my-home-assistant.com {
-     @headerauth {
-         header X-Custom-PSK MY-PRE-SHARED-KEY
-     }
-     handle @headerauth {
-        reverse_proxy 192.168.0.1:8123 {
-          header_up -X-Custom-PSK
-          header_up X-Forwarded-Host {host}
-        }
-     }
-     respond 403
- }
+      - lock.front_door
+      - light.living_room
+      - light.kitchen
+      - fan.living_room
 ```
 
-### FAQ
+Replace the example IDs with your own, reload groups or restart Home Assistant, then import again on the watch. See Home Assistant’s [legacy group documentation](https://www.home-assistant.io/integrations/group/#old-style-groups).
 
-#### Unknown error -300 - Self-Signed SSL Certificate
-Are you using a self-signed certificate? Unfortunately, this is not supported.
-Importing your certificate on the phone only makes it available on the phone.
-It would have to be added on the watch (which is - at least currently - not possible)
-So having an "official" SSL certificate is currently a must-have.
-You can get them either by using the Caddy config below or use Let's Encrypt directly or by buying a certificate - which have become quite cheap.
+### Settings
 
-See also https://github.com/hatl/hasscontrol/issues/17 for further details.
+| Setting | Purpose |
+| --- | --- |
+| Host | HTTPS origin used for login and API requests |
+| Group | Home Assistant group used to import devices |
+| Dark home screen | Off gives a light home screen; on gives dark |
+| Refresh on show | Refresh states when opening the widget; uses more network and battery |
+| Long-lived access token | Optional alternative to phone-mediated OAuth login |
+| Scenes | Optional scene shortcuts, e.g. `movie=Movie,good_bye=Good Bye` |
+| Close App after successful action | Close after supported successful individual actions |
+| Auto-close after inactivity | Timeout in seconds; `0` disables it, maximum `300` |
+| Entity ID to report battery level | Optional battery entity name, without `sensor.`; empty disables reporting |
+| Additional HTTP(S) Header — Key/Value | Optional proxy header; cannot override Authorization |
 
+## Authentication
+
+Phone-mediated Home Assistant **OAuth is the preferred flow**. Home Assistant handles your password and configured MFA; the watch stores tokens rather than collecting your password. A Home Assistant long-lived access token can be configured instead.
+
+This fork validates OAuth callbacks with a fresh random `state`, handles queued token-refresh callbacks, binds stored credentials to the configured host, and cancels pending work on logout/account changes. Changing Host clears credentials and imported devices. If using a long-lived token, save the new host first, then enter the token in a subsequent settings update.
+
+**Settings → Logout** clears locally stored OAuth credentials and the configured long-lived-token setting. A rejected long-lived token is also cleared. Local logout does not revoke tokens at Home Assistant: revoke them in your HA profile when necessary. Garmin settings/storage are persistent storage, not an encrypted credential vault. Token endpoint bodies are not logged.
+
+See [HOME_SETUP.md](HOME_SETUP.md) for implementation details and on-device checks.
+
+## Status and troubleshooting
+
+The home screen shows refresh age and identifies failed refreshes as cached data. The glance uses cached data only. Unavailable or transitional devices appear as unknown rather than being counted as safely off or locked.
+
+| Symptom | What to check |
+| --- | --- |
+| **Not configured** | Authenticate, check Group, then use **Settings → Refresh entities**. That category may have no imported devices. |
+| **Failed to refresh / cached status** | Check the paired phone, Garmin Connect and reachability of the HA address, then use **Refresh status**. Intermittent refresh failures are still being investigated through on-device testing. |
+| **Refreshing status — Try again shortly** | A refresh or bulk action is already running; retry when it finishes. |
+| **Check settings, invalid url** | Host must be an HTTPS origin without paths or query strings. |
+| Certificate/network error | Use a trusted HTTPS certificate; self-signed certificates are not supported by this setup. |
+| Missing devices | Check the group’s member IDs and supported entity types, reload HA groups and re-import. |
+| Old state after another device changes it | Use **Refresh status**; the widget does not subscribe to live HA updates. |
+| Sign-in required after changing Host | Expected: credentials and imports are bound to the previous address. Sign in and import again. |
+
+A displayed cached state is not proof of current physical state. A successful service request is also not proof that a device has finished changing state.
+
+## Additional entity support
+
+The legacy **Entities**, **Scenes** and **Entities&Scenes** views remain available from the menu.
+
+| Entity type | Supported action/display |
+| --- | --- |
+| `light`, `fan`, `switch`, `input_boolean`, `automation` | On/off; no brightness, colour or fan-speed control |
+| `lock` | Lock/unlock individually; lock-only bulk action |
+| `cover`, `valve` | Open/close |
+| `scene`, `script` | Execute |
+| `button`, `input_button` | Press |
+| `binary_sensor` | Basic state display |
+| `sensor` | Value display; icons depend on sensor type |
+
+## Build and validation
+
+Install the Garmin Connect IQ SDK **9.2.0** and Enduro 3 device definitions using SDK Manager. Generate your own developer signing key. From the repository root, with the SDK tools on your PATH:
+
+```sh
+mkdir -p build
+python3 scripts/check_menu_constructors.py
+cd widget
+monkeyc -y /path/to/developer_key.der -f monkey.jungle -d enduro3 -w -o ../build/hasscontrol-enduro3.prg
+monkeyc -y /path/to/developer_key.der -f monkey.jungle -d enduro3 -t -w -o ../build/hasscontrol-tests.prg
+# With the Connect IQ simulator running:
+monkeydo ../build/hasscontrol-tests.prg enduro3 -t
 ```
-home-assistant.mydomain.com {
-    @internal {
-        remote_ip 192.168.0.0/24
-    }
-    handle @internal {
-        reverse_proxy 192.168.0.1:8123 {
-        header_up X-Forwarded-Host {host}
-      }
-    }
-    respond 403
-}
-```
 
-#### Error message: "Check settings, invalid url"
-Check if you are using correct url with `https` prefix, because only secure HTTPS communication is allowed. This limitation comes from Garmin.
+The directory-creation example uses a POSIX shell; on Windows, create `build` in Explorer or PowerShell and use your SDK/key paths for the compile commands.
 
-#### Some entities from my group are missing in my Garmin device
-Not all Home Assistant entity types are currently supported by HassControl, you should take a look at [supported entity types table](#supported-entity-types).
+CI checks menu constructor arguments, compiles the app and regression tests, and uploads the Enduro 3 app. **CI does not execute the simulator tests.** Its device-definition download uses the inherited `hatl.at` mirror; local builds can use official SDK Manager downloads.
 
-#### Changed entity state doesn't show immediately in HassControl
-There is a rare occasion when someone changes state of an entity (for example turns the light on), while you are actively using this widget. In this case its state in your Garmin device will not correspond to its actual one. It has to be synced again. There are three option how to sync it. You either toggle it's state, select `Refresh entities` in `Settings` or reopen the widget (the state of all your entities is automatically received from Home Assistant every time you start the widget).
+Regression coverage includes domain identification, unknown/transitional states, group action targets, navigation offsets, OAuth callback correlation and token-refresh callback handling. See [VALIDATION.md](VALIDATION.md) for validation notes. Real phone connectivity, login and device behaviour still require watch testing.
 
-***Note***: *Because after predefined timeout period every widget is automatically closed, you should never experience this type of data discrepancy.*
+## Upstream and licence
 
+Based on [wroblisko/hasscontrol](https://github.com/wroblisko/hasscontrol), retaining its Home Assistant integration and legacy controls. See [LICENSE.md](LICENSE.md) for the licence.
