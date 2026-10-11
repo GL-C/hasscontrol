@@ -9,6 +9,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7.0.1
+      - name: Check Garmin menu constructor arguments
+        run: python3 scripts/check_menu_constructors.py
       - uses: actions/setup-java@v6.0.1
         with:
           distribution: temurin
