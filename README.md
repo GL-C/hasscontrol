@@ -1,3 +1,11 @@
+# HomeControl — personal Garmin dashboard
+
+Status-first Home Assistant controls for Guy: doors, lights, fans and a quick lights/fans-off action. See [setup, authentication changes and build instructions](HOME_SETUP.md).
+
+The upstream HassControl documentation follows below; the new Home screen is the default in this fork.
+
+---
+
 ## HassControl
 
 A garmin widget to interact with [Home Assistant](https://www.home-assistant.io/).
