@@ -9,6 +9,89 @@ using Utils;
 module Hass {
   const STORAGE_KEY = "Hass/entities";
 
+  var lastRefresh = null;
+  var refreshFailed = false;
+  var _offQueue = new [0];
+  var _offBusy = false;
+  var _refreshHadError = false;
+  var _refreshBusy = false;
+
+  // [total, matching state, unknown/transitional]. Never treat unavailable as off.
+  function cancelPendingWork() {
+    _entitiesToRefresh = new [0];
+    _transitionalEntities = new [0];
+    _offQueue = new [0];
+    _offBusy = false;
+    _refreshTimer.stop();
+    _refreshBusy = false;
+  }
+
+  function getHomeCounts(type, state) {
+    var counts = [0, 0, 0];
+    var entities = getEntitiesByTypes([type]);
+    for (var i = 0; i < entities.size(); i++) {
+      counts[0] += 1;
+      var value = entities[i].getState();
+      if (value == state) { counts[1] += 1; }
+      if (value == null || value == STATE_UNKNOWN || entities[i].isTransitional()) { counts[2] += 1; }
+    }
+    return counts;
+  }
+
+  function getCountText(counts) {
+    if (counts[0] == 0) { return "Not configured"; }
+    var text = counts[1] + " on";
+    if (counts[2] > 0) { text += " / " + counts[2] + " unknown"; }
+    return text;
+  }
+
+  // Only explicitly imported lights and fans. Excludes switches, locks and automations.
+  // Send turn_off even for cached off/unknown states; the cache may be stale.
+  function getAllOffTargets() {
+    var targets = new [0];
+    var entities = getEntitiesByTypes([TYPE_LIGHT, TYPE_FAN]);
+    for (var i = 0; i < entities.size(); i++) {
+      if (!entities[i].isExternal()) { targets.add(entities[i]); }
+    }
+    return targets;
+  }
+
+  function turnOffLightsAndFans() {
+    if (_offBusy || _refreshBusy) {
+      App.getApp().viewController.showError("Refreshing status\nTry again shortly");
+      return;
+    }
+    _offQueue = getAllOffTargets();
+    if (_offQueue.size() == 0) {
+      App.getApp().viewController.showError("Import lights and fans\nfrom Settings first");
+      return;
+    }
+    _offBusy = true;
+    App.getApp().viewController.showLoader("Turning off");
+    _onAllOffCompleted(null, null);
+  }
+
+  function _onAllOffCompleted(error, data) {
+    if (!_offBusy) { return; }
+    if (error != null) {
+      _offQueue = new [0];
+      _offBusy = false;
+      App.getApp().viewController.showError(error);
+      refreshAllEntities(true);
+      return;
+    }
+    if (_offQueue.size() > 0) {
+      var entity = _offQueue[0];
+      _offQueue.remove(entity);
+      client.setEntityState(entity.getId(), entity.getType() == TYPE_LIGHT ? "light" : "fan",
+        Client.ENTITY_ACTION_TURN_OFF, Utils.method(Hass, :_onAllOffCompleted));
+      return;
+    }
+    _offBusy = false;
+    // Read back actual states rather than claiming service acceptance means off.
+    refreshAllEntities(true);
+  }
+
   var client = null;
   var _entities = new [0];
   var _entitiesToRefresh = new [0];
@@ -147,6 +230,9 @@ module Hass {
 
   function _onReceiveEntity(err, data) {
     if (err != null) {
+      if (data != null && data[:context] != null && data[:context][:entity] != null) {
+        data[:context][:entity].setState(STATE_UNKNOWN);
+      }
       if (data != null && data[:context] != null && data[:context][:callback] != null) {
         data[:context][:callback].invoke(err, null);
       } else {
@@ -251,7 +337,9 @@ module Hass {
   }
 
   function _refreshPendingEntities(error, noop) {
+    if (error != null) { _refreshHadError = true; refreshFailed = true; }
     if (error != null && !_continueRefreshOnError) {
+      _refreshBusy = false;
       App.getApp().viewController.removeLoader();
       App.getApp().viewController.showError(error);
 
@@ -283,6 +371,9 @@ module Hass {
         _refreshPendingEntities(null, null);
       }
     } else {
+      _refreshBusy = false;
+      refreshFailed = _refreshHadError;
+      if (!_refreshHadError) { lastRefresh = Toybox.Time.now(); }
       // We need to finalize with reading the scenes from settings again,
       // so that the name config takes precedence
       loadScenesFromSettings();
@@ -296,6 +387,9 @@ module Hass {
   }
 
   function refreshAllEntities(continueOnError) {
+    if (_refreshBusy) { return; }
+    _refreshBusy = true;
+    _refreshHadError = false;
     _entitiesToRefresh = new [0];
     _continueRefreshOnError = continueOnError == true;
 
@@ -390,20 +484,8 @@ module Hass {
 
     var entity = getEntity(data[:context][:entityId]);
     if (entity != null) {
-      if (data[:context][:state] != null) {
-        var newState = data[:context][:state];
-
-        if (entity.getType() == Entity.TYPE_SCRIPT || entity.getType() == Entity.TYPE_BUTTON) {
-          newState = Entity.STATE_OFF;
-        }
-
-        entity.setState(newState);
-
-        storeEntities();
-        Ui.requestUpdate();
-      } else {
-        refreshEntity(entity, Utils.method(Hass, :_refreshPendingEntities));
-      }
+      refreshEntity(entity, Utils.method(Hass, :_onActionReadback));
+      return;
     }
 
     App.getApp().viewController.removeLoader();
@@ -413,6 +495,26 @@ module Hass {
       // Small delay before exiting to ensure UI updates are seen by user
       var exitTimer = new Timer.Timer();
       exitTimer.start(Utils.method(Hass, :exitApplication), 2000, false);
+    }
+  }
+
+  function _onActionReadback(error, entity) {
+    if (error != null) {
+      storeEntities();
+      refreshFailed = true;
+      App.getApp().viewController.showError(error);
+      Ui.requestUpdate();
+      return;
+    }
+    if (entity != null && entity.isTransitional()) {
+      _transitionalEntities.add(entity);
+      _refreshTimer.start(Utils.method(Hass, :_refreshTransitionalEntities), 2000, false);
+    }
+    storeEntities();
+    App.getApp().viewController.removeLoader();
+    Ui.requestUpdate();
+    if (App.Properties.getValue("closeAfterAction") && (entity == null || !entity.isTransitional())) {
+      _refreshTimer.start(Utils.method(Hass, :exitApplication), 2000, false);
     }
   }
 
@@ -498,9 +600,18 @@ module Hass {
       entityType = "input_button";
     }
 
+    if (action == null && entityType != "scene") {
+      App.getApp().viewController.showError("State unknown / moving\nRefresh before controlling");
+      return;
+    }
+
     App.getApp().viewController.showLoader(loadingText);
 
-    client.setEntityState(entityId, entityType, action, Utils.method(Hass, :onToggleEntityStateCompleted));
+    if (entityType == "scene") {
+      client.activateScene(entityId, Utils.method(Hass, :onToggleEntityStateCompleted));
+    } else {
+      client.setEntityState(entityId, entityType, action, Utils.method(Hass, :onToggleEntityStateCompleted));
+    }
   }
 }
 

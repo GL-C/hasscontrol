@@ -27,6 +27,11 @@ module Hass {
                 System.println("Initializing with long-lived access token");
                 _fixedAccessToken = true;
                 _accessToken = accessToken;
+                _refreshToken = null;
+                _expires = null;
+                App.Storage.deleteValue("access_token");
+                App.Storage.deleteValue("refresh_token");
+                App.Storage.deleteValue("expires");
             } else {
                 _fixedAccessToken = false;
                 _accessToken = null;
@@ -34,7 +39,7 @@ module Hass {
         }
 
         function isLoggedIn() {
-            if (_fixedAccessToken == true || getRefreshToken() != null) {
+            if ((_fixedAccessToken == true && getAccessToken() != null) || getRefreshToken() != null) {
                 return true;
             }
 
@@ -111,11 +116,16 @@ module Hass {
             }
         }
 
+        // Storage is persistent app storage, not an encrypted credential vault.
         function clear() {
-            System.println("Clearing credentials!");
-            setAccessToken(null);
-            setRefreshToken(null);
-            setExpires(null);
+            _fixedAccessToken = false;
+            _accessToken = null;
+            _refreshToken = null;
+            _expires = null;
+            App.Properties.setValue("accessToken", "");
+            App.Storage.deleteValue("access_token");
+            App.Storage.deleteValue("refresh_token");
+            App.Storage.deleteValue("expires");
         }
 
         function hasExpired() {

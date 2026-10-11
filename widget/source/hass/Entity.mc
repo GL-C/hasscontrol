@@ -121,33 +121,33 @@ module Hass {
         return;
       }
 
-      if (_mId.find("scene.") != null) {
+      if (_mId.find("scene.") == 0) {
         _mType = TYPE_SCENE;
-      } else if (_mId.find("light.") != null) {
+      } else if (_mId.find("light.") == 0) {
         _mType = TYPE_LIGHT;
-      } else if (_mId.find("switch.") != null) {
+      } else if (_mId.find("switch.") == 0) {
         _mType = TYPE_SWITCH;
-      } else if (_mId.find("valve.") != null) {
+      } else if (_mId.find("valve.") == 0) {
         _mType = TYPE_VALVE;
-      } else if (_mId.find("automation.") != null) {
+      } else if (_mId.find("automation.") == 0) {
         _mType = TYPE_AUTOMATION;
-      } else if (_mId.find("script.") != null) {
+      } else if (_mId.find("script.") == 0) {
         _mType = TYPE_SCRIPT;
-      } else if (_mId.find("lock.") != null) {
+      } else if (_mId.find("lock.") == 0) {
         _mType = TYPE_LOCK;
-      } else if (_mId.find("cover.") != null) {
+      } else if (_mId.find("cover.") == 0) {
         _mType = TYPE_COVER;
-      } else if (_mId.find("fan.") != null) {
+      } else if (_mId.find("fan.") == 0) {
         _mType = TYPE_FAN;
-      } else if (_mId.find("binary_sensor.") != null) {
+      } else if (_mId.find("binary_sensor.") == 0) {
         _mType = TYPE_BINARY_SENSOR;
-      } else if (_mId.find("input_boolean.") != null) {
+      } else if (_mId.find("input_boolean.") == 0) {
         _mType = TYPE_INPUT_BOOLEAN;
-      } else if (_mId.find("input_button.") != null) {
+      } else if (_mId.find("input_button.") == 0) {
         _mType = TYPE_INPUT_BUTTON;
-      } else if (_mId.find("button.") != null) {
+      } else if (_mId.find("button.") == 0) {
         _mType = TYPE_BUTTON;
-      } else if (_mId.find("sensor.") != null) {
+      } else if (_mId.find("sensor.") == 0) {
         _mType = TYPE_SENSOR;
       } else {
         _mType = TYPE_UNKNOWN;

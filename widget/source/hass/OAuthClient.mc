@@ -2,6 +2,7 @@ using Toybox.Communications as Comm;
 using Toybox.Application as App;
 using Toybox.StringUtil;
 using Toybox.Time;
+using Toybox.Cryptography;
 
 (:glance)
 module Hass {
@@ -18,6 +19,9 @@ module Hass {
         hidden var _isFetchingAccessToken;
         hidden var _additionalHeaderKey;
         hidden var _additionalHeaderValue;
+        hidden var _sessionGeneration;
+        hidden var _configuredToken;
+        hidden var _oauthState;
 
         function initialize(options) {
             Comm.registerForOAuthMessages(method(:onReceiveCode));
@@ -28,6 +32,9 @@ module Hass {
             _redirectUrl = options[:redirectUrl];
             _credentials = new OauthCredentials();
             _tokenCallbacks = new [0];
+            _sessionGeneration = 0;
+            _oauthState = null;
+            _configuredToken = App.Properties.getValue("accessToken");
             _isLoggingIn = false;
             _isFetchingAccessToken = false;
             _additionalHeaderKey = App.Properties.getValue("additional_header_key");
@@ -35,7 +42,19 @@ module Hass {
         }
 
         function onSettingsChanged() {
+            var token = App.Properties.getValue("accessToken");
+            if (token != _configuredToken) {
+                // Invalidate pending work without clearing the newly supplied property.
+                Hass.cancelPendingWork();
+                _sessionGeneration += 1;
+                _isFetchingAccessToken = false;
+                _setIsLoggingIn(false);
+                fireTokenCallbacks(new RequestError(401));
+                _configuredToken = token;
+            }
             _credentials.loadLongLivedToken();
+            _additionalHeaderKey = App.Properties.getValue("additional_header_key");
+            _additionalHeaderValue = App.Properties.getValue("additional_header_value");
         }
 
         function setAuthUrl(newUrl) {
@@ -66,12 +85,12 @@ module Hass {
         }
 
         function fireTokenCallbacks(error) {
-            for( var i = 0; i < _tokenCallbacks.size(); i++ ) {
-                var callbackObject = _tokenCallbacks[i];
-
-                callbackObject["callback"].invoke(error, callbackObject["context"]);
-
-                removeTokenCallback(callbackObject);
+            // Drain a snapshot: removing from the live array skipped every other waiter.
+            // New callbacks added while invoking belong to the next refresh cycle.
+            var callbacks = _tokenCallbacks;
+            _tokenCallbacks = new [0];
+            for (var i = 0; i < callbacks.size(); i++) {
+                callbacks[i]["callback"].invoke(error, callbacks[i]["context"]);
             }
         }
 
@@ -85,12 +104,13 @@ module Hass {
             return _credentials.isLoggedIn();
         }
 
-        function onReceiveTokens(code, data) {
+        function onReceiveTokens(code, data, context) {
+            if (context == null || context[:generation] != _sessionGeneration) { return; }
             _setIsLoggingIn(false);
 
             _isFetchingAccessToken = false;
 
-            if (code == 200) {
+            if (code == 200 && data != null && data["access_token"] != null && data["expires_in"] != null) {
                 _credentials.setExpires(data["expires_in"]);
                 _credentials.setAccessToken(data["access_token"]);
 
@@ -110,7 +130,7 @@ module Hass {
                 }
 
                 System.println("Failed to complete token request, status " + code);
-                System.println(data);
+                // Do not log token endpoint response bodies.
 
                 fireTokenCallbacks(error);
             }
@@ -144,7 +164,8 @@ module Hass {
                         "refresh_token" => refreshToken
                     },
                     {
-                        :method => Comm.HTTP_REQUEST_METHOD_POST
+                        :method => Comm.HTTP_REQUEST_METHOD_POST,
+                        :context => { :generation => _sessionGeneration }
                     },
                     method(:onReceiveTokens)
                 );
@@ -169,7 +190,8 @@ module Hass {
                         "code" => code
                     },
                     {
-                        :method => Comm.HTTP_REQUEST_METHOD_POST
+                        :method => Comm.HTTP_REQUEST_METHOD_POST,
+                        :context => { :generation => _sessionGeneration }
                     },
                     method(:onReceiveTokens)
                 );
@@ -177,7 +199,16 @@ module Hass {
         }
 
         function onReceiveCode(value) {
-            if (value.data["code"] != null) {
+            if (!_isLoggingIn) { return; }
+            if (value.data != null && value.data["code"] != null) {
+                // Bind the phone callback to this login, including after logout/re-login.
+                if (!matchesOAuthState(value.data["state"])) {
+                    _oauthState = null;
+                    _setIsLoggingIn(false);
+                    fireTokenCallbacks(new RequestError(401));
+                    return;
+                }
+                _oauthState = null;
                 System.println("Received auth code from home assistant");
                 getTokensFromCode(value.data["code"]);
             } else {
@@ -203,16 +234,22 @@ module Hass {
                 return;
             }
 
+            if (_isLoggingIn) { return; }
             _setIsLoggingIn(true);
 
             if (!System.getDeviceSettings().phoneConnected) {
                 var error = new OAuthError(OAuthError.ERROR_PHONE_NOT_CONNECTED);
+                _setIsLoggingIn(false);
 
                 fireTokenCallbacks(error);
 
                 return;
             }
 
+            _oauthState = StringUtil.convertEncodedString(Cryptography.randomBytes(16), {
+                :fromRepresentation => StringUtil.REPRESENTATION_BYTE_ARRAY,
+                :toRepresentation => StringUtil.REPRESENTATION_STRING_HEX
+            });
             System.println("About to fire an oauth request!");
             Comm.makeOAuthRequest(
             _authUrl,
@@ -220,28 +257,47 @@ module Hass {
                     "client_id" => _clientId,
                     "response_type"=>"code",
                     "scope"=>"public",
-                    "redirect_uri"=> _redirectUrl
+                    "redirect_uri"=> _redirectUrl,
+                    "state" => _oauthState
                 },
                 _redirectUrl,
                 Comm.OAUTH_RESULT_TYPE_URL,
-                {"code"=>"code"}
+                {"code"=>"code", "state"=>"state"}
             );
         }
 
+        function matchesOAuthState(state) {
+            return _oauthState != null && state != null && _oauthState.equals(state);
+        }
+
         function logout() {
-            // TODO: try to clear session in home assistant?
+            Hass.cancelPendingWork();
+            _oauthState = null;
+            _sessionGeneration += 1;
             _credentials.clear();
+            _configuredToken = "";
+            _isFetchingAccessToken = false;
+            _setIsLoggingIn(false);
+            fireTokenCallbacks(new RequestError(401));
         }
 
         function onWebResponse(responseCode, body, context) {
+            // Old session owners have already cancelled their queues and loaders.
+            if (context[:generation] != _sessionGeneration) { return; }
             var error = null;
 
             if (responseCode < 200 || responseCode >= 300) {
                 error = new RequestError(responseCode);
 
                 if (error.code == ERROR_NOT_AUTHORIZED) {
-                    _credentials.setAccessToken(null);
-                    _credentials.setExpires(null);
+                    // A rejected fixed token must not remain "logged in" forever.
+                    // Preserve an OAuth refresh token so a later request can refresh.
+                    if (_credentials.getRefreshToken() == null) {
+                        _credentials.clear();
+                    } else {
+                        _credentials.setAccessToken(null);
+                        _credentials.setExpires(null);
+                    }
                 }
                 if (
                     error.code == ERROR_NOT_FOUND
@@ -252,7 +308,7 @@ module Hass {
                 }
             }
 
-            System.println(context);
+            // Request context may include sensitive identifiers; do not dump it.
 
             context[:responseCallback].invoke(error, {
                 :responseCode => responseCode,
@@ -262,6 +318,7 @@ module Hass {
         }
 
         function doAuthenticatedWebRequest(error, context) {
+            if (context[:generation] != _sessionGeneration) { return; }
             if (error != null) {
                 context[:responseCallback].invoke(error, {
                     :context => context[:context]
@@ -278,12 +335,14 @@ module Hass {
                     "Authorization" => "Bearer " + accessToken
                 },
                 :context => {
+                    :generation => _sessionGeneration,
                     :responseCallback => context[:responseCallback],
                     :context => context[:options][:context]
                 }
             };
 
-            if (_additionalHeaderKey.length() > 0) {
+            if (_additionalHeaderKey != null && _additionalHeaderKey.length() > 0
+                && !_additionalHeaderKey.toLower().equals("authorization")) {
                 options[:headers][_additionalHeaderKey] = _additionalHeaderValue;
             }
 
@@ -311,6 +370,7 @@ module Hass {
 
         function makeAuthenticatedWebRequest(url, parameters, options, responseCallback) {
             addTokenCallback(method(:doAuthenticatedWebRequest), {
+                :generation => _sessionGeneration,
                 :url => url,
                 :parameters => parameters,
                 :options => options,

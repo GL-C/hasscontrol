@@ -27,6 +27,15 @@ module Hass {
         function initialize() {
             refreshBaseUrl();
 
+            var savedHost = App.Storage.getValue("auth_host");
+            // Existing unbound credentials also require re-login during migration.
+            if ((savedHost != null && !savedHost.equals(_baseUrl))
+                || (savedHost == null && App.Storage.getValue("refresh_token") != null)) {
+                new OauthCredentials().clear();
+                App.Storage.deleteValue("Hass/entities");
+            }
+            App.Storage.setValue("auth_host", _baseUrl);
+
             OAuthClient.initialize({
                 :authUrl => _baseUrl + AUTH_ENDPOINT,
                 :tokenUrl => _baseUrl + TOKEN_ENDPOINT,
@@ -37,6 +46,9 @@ module Hass {
 
         function refreshBaseUrl() {
             var newUrl = App.Properties.getValue("host");
+            _baseUrl = "";
+            _baseUrlIsValid = false;
+            if (newUrl == null) { return; }
             var chars = newUrl.toCharArray();
 
             if (chars.size() < 8) {
@@ -57,15 +69,28 @@ module Hass {
             }
 
             _baseUrl = StringUtil.charArrayToString(chars);
+            // Credentials are for a single HA origin. Reject userinfo, paths and query strings.
+            var authority = StringUtil.charArrayToString(chars.slice(8, chars.size()));
+            if (authority.length() == 0 || authority.find("/") != null || authority.find("@") != null
+                || authority.find("?") != null || authority.find("#") != null || authority.find(" ") != null) {
+                _baseUrlIsValid = false;
+            }
         }
 
         function onSettingsChanged() {
+            var oldUrl = _baseUrl;
             refreshBaseUrl();
-
-            OAuthClient.onSettingsChanged();
-
+            if (!oldUrl.equals(_baseUrl)) {
+                logout();
+                App.Storage.deleteValue("Hass/entities");
+                Hass.loadStoredEntities();
+                Hass.lastRefresh = null;
+                Hass.refreshFailed = false;
+            }
             setAuthUrl(_baseUrl + AUTH_ENDPOINT);
             setTokenUrl(_baseUrl + TOKEN_ENDPOINT);
+            App.Storage.setValue("auth_host", _baseUrl);
+            OAuthClient.onSettingsChanged();
         }
 
         function validateSettings(errorCallback) {
@@ -100,7 +125,8 @@ module Hass {
                     "entity_id" => sceneId
                 },
                 {
-                    :method => Comm.HTTP_REQUEST_METHOD_POST
+                    :method => Comm.HTTP_REQUEST_METHOD_POST,
+                    :context => { :entityId => sceneId }
                 },
                 callback
             );
