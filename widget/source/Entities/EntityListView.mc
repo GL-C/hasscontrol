@@ -9,10 +9,16 @@ class EntityListController {
   hidden var _mTypes;
   hidden var _mHassModel;
   hidden var _mIndex;
+  hidden var _mBulkType;
 
   function initialize(types) {
     _mTypes = types;
     _mIndex = 0;
+    _mBulkType = null;
+    if (types != null && types.size() == 1
+        && (types[0] == Hass.TYPE_LIGHT || types[0] == Hass.TYPE_FAN || types[0] == Hass.TYPE_LOCK)) {
+      _mBulkType = types[0];
+    }
 
     refreshEntities();
   }
@@ -25,21 +31,19 @@ class EntityListController {
     }
 
     // Ensure index is within valid bounds
-    if (_mEntities.size() == 0) {
+    if (getCount() == 0) {
       _mIndex = 0;
-    } else if (_mIndex >= _mEntities.size()) {
-      _mIndex = _mEntities.size() - 1;
+    } else if (_mIndex >= getCount()) {
+      _mIndex = getCount() - 1;
     } else if (_mIndex < 0) {
       _mIndex = 0;
     }
   }
 
   function getCurrentEntity() {
-    if (_mEntities.size() == 0) {
-      return null;
-    }
-
-    return _mEntities[_mIndex];
+    if (isBulkAction() || _mEntities.size() == 0) { return null; }
+    var index = _mBulkType != null ? _mIndex - 1 : _mIndex;
+    return _mEntities[index];
   }
 
   function setIndex(index) {
@@ -54,8 +58,12 @@ class EntityListController {
   }
 
   function getCount() {
-    return _mEntities.size();
+    return _mEntities.size() + (_mBulkType != null ? 1 : 0);
   }
+
+  function isBulkAction() { return _mBulkType != null && _mIndex == 0; }
+  function getGroupType() { return _mBulkType; }
+  function runBulkAction() { Hass.runGroupAction(_mBulkType); }
 
   function toggleEntity(entity) {
     Hass.toggleEntityState(entity);
@@ -79,6 +87,10 @@ class EntityListDelegate extends Ui.BehaviorDelegate {
 
   function onSelect() {
     App.getApp().resetInactivityTimer();
+    if (_mController.isBulkAction()) {
+      _mController.runBulkAction();
+      return true;
+    }
     var entity = _mController.getCurrentEntity();
 
     if (entity != null) {
@@ -435,6 +447,24 @@ class EntityListView extends Ui.View {
     _mLastIndex = index;
   }
 
+  function drawBulkAction(dc) {
+    var type = _mController.getGroupType();
+    var title = type == Hass.TYPE_LOCK ? "Doors" : (type == Hass.TYPE_LIGHT ? "Lights" : "Fans");
+    var action = type == Hass.TYPE_LOCK ? "Lock all" : "Turn all off";
+    var counts = Hass.getHomeCounts(type, type == Hass.TYPE_LOCK ? Hass.STATE_LOCKED : Hass.STATE_ON);
+    var summary = type == Hass.TYPE_LOCK ? Hass.getDoorText(counts) : Hass.getCountText(counts);
+    var w = dc.getWidth();
+    var h = dc.getHeight();
+    var dark = App.Properties.getValue("darkTheme") == true;
+    dc.setColor(dark ? Graphics.COLOR_WHITE : Graphics.COLOR_BLACK, dark ? Graphics.COLOR_BLACK : Graphics.COLOR_WHITE);
+    dc.clear();
+    dc.drawText(w / 2, h * 0.15, Graphics.FONT_SMALL, title, Graphics.TEXT_JUSTIFY_CENTER);
+    dc.drawText(w / 2, h * 0.36, Graphics.FONT_MEDIUM, action, Graphics.TEXT_JUSTIFY_CENTER);
+    dc.drawText(w / 2, h * 0.55, Graphics.FONT_XTINY, summary, Graphics.TEXT_JUSTIFY_CENTER);
+    dc.drawText(w / 2, h * 0.70, Graphics.FONT_XTINY, "Tap / Select to run", Graphics.TEXT_JUSTIFY_CENTER);
+    dc.drawText(w / 2, h * 0.81, Graphics.FONT_XTINY, "Scroll: individual items", Graphics.TEXT_JUSTIFY_CENTER);
+  }
+
   function onUpdate(dc) {
     View.onUpdate(dc);
 
@@ -444,6 +474,11 @@ class EntityListView extends Ui.View {
 
     dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_BLACK);
     dc.clear();
+
+    if (_mController.isBulkAction()) {
+      drawBulkAction(dc);
+      return;
+    }
 
     if (entity == null) {
       drawNoEntityText(dc);
