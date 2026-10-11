@@ -38,7 +38,8 @@ class ViewController {
   }
 
   function getHomeView() {
-    return [new HomeView(), new HomeDelegate()];
+    var view = new HomeView();
+    return [view, new HomeDelegate(view)];
   }
 
   function pushHomeView() {
