@@ -40,8 +40,6 @@ class MenuController {
         });
 
         if (App.getApp().isLoggedIn()) {
-            menu.addItem(new Ui.MenuItem("Lights & fans off", "Imported group only", MENU_ALL_OFF, {}));
-            menu.addItem(new Ui.MenuItem("Home status", "", MENU_HOME, {}));
             menu.addItem(new Ui.MenuItem("Doors", "", MENU_LOCKS, {}));
             menu.addItem(new Ui.MenuItem("Lights", "", MENU_LIGHTS, {}));
             menu.addItem(new Ui.MenuItem("Fans", "", MENU_FANS, {}));
@@ -49,14 +47,7 @@ class MenuController {
             menu.addItem(new Ui.MenuItem(
                 "Scenes",
                 "",
-                MenuController.MENU_HOME,
-        MENU_ALL_OFF,
-        MENU_LIGHTS,
-        MENU_FANS,
-        MENU_LOCKS,
-        MENU_REFRESH_STATUS,
-        MENU_START_HOME,
-        MENU_SWITCH_TO_SCENES,
+                MenuController.MENU_SWITCH_TO_SCENES,
                 {}
             ));
             menu.addItem(new Ui.MenuItem(
@@ -122,7 +113,7 @@ class MenuController {
         });
 
         var currentStartView = App.getApp().getStartView();
-        menu.addItem(new Ui.MenuItem("Home status", currentStartView.equals(HassControlApp.HOME_VIEW) ? "selected" : "", MENU_START_HOME, {}));
+        menu.addItem(new Ui.MenuItem("Groups", currentStartView.equals(HassControlApp.HOME_VIEW) ? "selected" : "", MENU_START_HOME, {}));
         var entitiesSubtitle = "";
         var scenesSubtitle = "";
         var entitiesScenesSubtitle = "";
