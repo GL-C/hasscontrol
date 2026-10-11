@@ -91,6 +91,10 @@ class EntityListDelegate extends Ui.BehaviorDelegate {
     return true;
   }
 
+  function onTap(clickEvent) {
+    return onSelect();
+  }
+
   function onHold(clickEvent) {
     App.getApp().resetInactivityTimer();
     // Handle long press gesture to open menu
@@ -238,7 +242,7 @@ class EntityListView extends Ui.View {
     if (Utils.isRectangularScreen()) {
       dc.drawText( cvw, cvh, font, text, Graphics.TEXT_JUSTIFY_CENTER);
     } else {
-      dc.drawText(cvh, cvw * 1.1, font, text, Graphics.TEXT_JUSTIFY_CENTER);
+      dc.drawText(cvw, vh * 0.55, font, text, Graphics.TEXT_JUSTIFY_CENTER);
     }
   }
 
