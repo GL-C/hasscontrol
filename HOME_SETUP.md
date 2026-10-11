@@ -4,10 +4,10 @@ A status-first Garmin Home Assistant widget, adapted for Enduro 3. This is a wat
 
 ## Daily use
 
-- Opens on **Home**: imported door locks, lights on, fans on, and refresh age.
+- Opens on three selectable groups: **Doors**, **Lights**, **Fans**, each showing current status and refresh age.
 - Light home screen by default; **Dark home screen** in Connect IQ settings switches it to dark.
-- Tap/Select opens controls. **Lights & fans off** is the first menu item.
-- Doors, Lights and Fans open filtered individual controls. Scenes and other entities remain available.
+- Tap a group to open it. With buttons, Up/Down selects a group and Select opens it. **Lock all** or **Turn all off** appears first; scroll through individual devices. Back returns to the groups.
+- Menu/long press opens refresh, settings and legacy views. The separate Home status menu item is removed.
 - Unknown, unavailable and moving states are shown explicitly. A cached state is never a guarantee of current home status.
 - The watch glance reads cached data only, clearly labelled. Open the widget and refresh for current status.
 
@@ -30,7 +30,7 @@ group:
 
 Set the widget's **Group** to `garmin` or `group.garmin`. After signing in, open **Settings → Refresh entities** to import it. Use **Refresh status** to read existing entities again. Add entities in HA and re-import to change membership. No credentials or real entity IDs are bundled in this repository.
 
-**Lights & fans off** sends explicit `turn_off` commands sequentially to every imported light and fan, even if the cached state says off or unavailable. It excludes externally configured shortcuts, switches, locks, covers, scripts and automations. The operation stops on the first service failure; earlier devices may already have turned off, and remaining devices may still be on. It reads states back afterward, rather than treating HTTP success as proof of a physical state change.
+Each **Turn all off** action sends explicit `turn_off` commands sequentially to imported devices in that group only, even if cached states say off or unavailable. **Lock all** sends `lock` commands to imported locks only; it never bulk-unlocks. It excludes externally configured shortcuts, switches, locks, covers, scripts and automations. The operation stops on the first service failure; earlier devices may already have turned off, and remaining devices may still be on. It reads states back afterward, rather than treating HTTP success as proof of a physical state change.
 
 ## Sign-in and credential handling
 
