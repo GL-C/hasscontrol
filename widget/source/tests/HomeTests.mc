@@ -103,3 +103,49 @@ function testAllOffOnlyTargetsImportedLightsAndFans(logger) {
   Test.assertEqual(targets[1].getId(), "fan.unknown");
   return true;
 }
+
+(:test)
+function testGroupBulkTargetsStayInTheirOwnDomain(logger) {
+  var saved = Hass._entities;
+  Hass._entities = [
+    new Hass.Entity({ :id => "light.a", :state => "on" }),
+    new Hass.Entity({ :id => "fan.a", :state => "off" }),
+    new Hass.Entity({ :id => "lock.a", :state => "unlocked" }),
+    new Hass.Entity({ :id => "light.external", :state => "on", :ext => true })
+  ];
+  var lights = Hass.getGroupTargets(Hass.TYPE_LIGHT);
+  var fans = Hass.getGroupTargets(Hass.TYPE_FAN);
+  var locks = Hass.getGroupTargets(Hass.TYPE_LOCK);
+  var invalid = Hass.getGroupTargets(Hass.TYPE_SWITCH);
+  Hass._entities = saved;
+  Test.assertEqual(lights.size(), 1);
+  Test.assertEqual(lights[0].getId(), "light.a");
+  Test.assertEqual(fans.size(), 1);
+  Test.assertEqual(fans[0].getId(), "fan.a");
+  Test.assertEqual(locks.size(), 1);
+  Test.assertEqual(locks[0].getId(), "lock.a");
+  Test.assertEqual(invalid.size(), 0);
+  return true;
+}
+
+(:test)
+function testGroupStartsWithBulkThenIndividualDevices(logger) {
+  var saved = Hass._entities;
+  Hass._entities = [new Hass.Entity({ :id => "light.a", :state => "on" })];
+  var controller = new EntityListController([Hass.TYPE_LIGHT]);
+  Test.assertEqual(controller.getCount(), 2);
+  Test.assert(controller.isBulkAction());
+  Test.assertEqual(controller.getCurrentEntity(), null);
+  controller.setIndex(1);
+  Test.assert(!controller.isBulkAction());
+  Test.assertEqual(controller.getCurrentEntity().getId(), "light.a");
+  Hass._entities = new [0];
+  controller.refreshEntities();
+  Test.assertEqual(controller.getCount(), 1);
+  Test.assert(controller.isBulkAction());
+  var scenes = new EntityListController([Hass.TYPE_SCENE]);
+  Test.assertEqual(scenes.getCount(), 0);
+  Test.assert(!scenes.isBulkAction());
+  Hass._entities = saved;
+  return true;
+}
