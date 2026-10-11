@@ -1,6 +1,6 @@
 # HomeControl — personal Garmin dashboard
 
-Status-first Home Assistant controls for Guy: selectable doors, lights and fans groups, each with a bulk action followed by individual controls. See [setup, authentication changes and build instructions](HOME_SETUP.md).
+Status-first Home Assistant controls for selectable doors, lights and fans groups, each with a bulk action followed by individual controls. See [setup, authentication changes and build instructions](HOME_SETUP.md).
 
 The upstream HassControl documentation follows below; the new Home screen is the default in this fork.
 
