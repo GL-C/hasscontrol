@@ -12,6 +12,38 @@ class MenuDelegate extends Ui.Menu2InputDelegate {
         App.getApp().resetInactivityTimer();
         var itemId = item.getId();
 
+        if (itemId == MenuController.MENU_HOME) {
+            Ui.popView(Ui.SLIDE_IMMEDIATE);
+            App.getApp().viewController.switchHomeView();
+            return true;
+        }
+        if (itemId == MenuController.MENU_ALL_OFF) {
+            Ui.popView(Ui.SLIDE_IMMEDIATE);
+            Hass.turnOffLightsAndFans();
+            return true;
+        }
+        if (itemId == MenuController.MENU_REFRESH_STATUS) {
+            Ui.popView(Ui.SLIDE_IMMEDIATE);
+            Hass.refreshAllEntities(true);
+            return true;
+        }
+        if (itemId == MenuController.MENU_LIGHTS || itemId == MenuController.MENU_FANS || itemId == MenuController.MENU_LOCKS) {
+            var type = Hass.TYPE_LIGHT;
+            if (itemId == MenuController.MENU_FANS) { type = Hass.TYPE_FAN; }
+            if (itemId == MenuController.MENU_LOCKS) { type = Hass.TYPE_LOCK; }
+            var controller = new EntityListController([type]);
+            Ui.popView(Ui.SLIDE_IMMEDIATE);
+            Ui.pushView(new EntityListView(controller), new EntityListDelegate(controller), Ui.SLIDE_IMMEDIATE);
+            return true;
+        }
+        if (itemId == MenuController.MENU_START_HOME) {
+            App.getApp().setStartView(HassControlApp.HOME_VIEW);
+            Ui.popView(Ui.SLIDE_IMMEDIATE);
+            Ui.popView(Ui.SLIDE_IMMEDIATE);
+            App.getApp().menu.showSettingsMenu();
+            return true;
+        }
+
         if (itemId == MenuController.MENU_SWITCH_TO_ENTITIES) {
             Ui.popView(Ui.SLIDE_IMMEDIATE);
 
