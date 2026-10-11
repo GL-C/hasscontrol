@@ -1,50 +1,42 @@
-name: Makefile CI
+name: Enduro 3 build
 
-on: [push, pull_request]
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v3
-
-    - name: Set up JDK 1.8
-      uses: actions/setup-java@v1
-      with:
-        java-version: 1.8
-
-    - name: Get devices
-      run: |
-        cd ~
-        wget https://hatl.at/devices.zip
-        unzip -qq devices.zip
-
-    - name: Get SDK
-      run: |
-        mkdir ~/sdk
-        cd ~/sdk
-        wget https://developer.garmin.com/downloads/connect-iq/sdks/connectiq-sdk-lin-8.1.1-2025-03-27-66dae750f.zip
-        unzip -qq connectiq-sdk-lin-8.1.1-2025-03-27-66dae750f.zip
-        echo ~/sdk/bin >> $GITHUB_PATH
-
-    - name: Set SDK location
-      run: |
-        cd widget
-        echo "sdk.location=~/sdk" > local.properties  
-
-    - name: Generate developer key
-      run: |
-        openssl genrsa -out ~/developer_key.pem 4096
-        openssl pkcs8 -topk8 -inform PEM -outform DER -in ~/developer_key.pem -out ~/developer_key.der -nocrypt
-
-    - name: Build prg file
-      run: |
-        cd widget
-        monkeyc -y ~/developer_key.der -f monkey.jungle -w -o /tmp/output.prg
-
-    - name: Build iq file
-      run: |
-        cd widget
-        monkeyc -y ~/developer_key.der -f monkey.jungle -w -e -o /tmp/output.iq
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install Connect IQ SDK and device definitions
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ciq"
+          curl --fail --location --retry 3 https://developer.garmin.com/downloads/connect-iq/sdks/connectiq-sdk-lin-9.2.0-2026-06-09-92a1605b2.zip -o "$RUNNER_TEMP/sdk.zip"
+          echo "4907d8455b651c5a00a865e364cc4f1921c055b9279c7c8634c7a7a6773b5593  $RUNNER_TEMP/sdk.zip" | sha256sum --check
+          unzip -q "$RUNNER_TEMP/sdk.zip" -d "$RUNNER_TEMP/ciq"
+          # Inherited device mirror; SDK Manager can supply official definitions locally.
+          curl --fail --location --retry 3 https://hatl.at/devices.zip -o "$RUNNER_TEMP/devices.zip"
+          unzip -q "$RUNNER_TEMP/devices.zip" -d "$HOME"
+          echo "$RUNNER_TEMP/ciq/bin" >> "$GITHUB_PATH"
+      - name: Generate temporary development signing key
+        run: |
+          openssl genrsa -out "$RUNNER_TEMP/key.pem" 4096
+          openssl pkcs8 -topk8 -inform PEM -outform DER -in "$RUNNER_TEMP/key.pem" -out "$RUNNER_TEMP/key.der" -nocrypt
+      - name: Compile app and regression tests
+        working-directory: widget
+        run: |
+          mkdir -p ../build
+          monkeyc -y "$RUNNER_TEMP/key.der" -f monkey.jungle -d enduro3 -w -o ../build/hasscontrol-enduro3.prg
+          monkeyc -y "$RUNNER_TEMP/key.der" -f monkey.jungle -d enduro3 -t -w -o ../build/hasscontrol-tests.prg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hasscontrol-enduro3
+          path: build/hasscontrol-enduro3.prg
+          if-no-files-found: error
