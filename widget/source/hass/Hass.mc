@@ -13,6 +13,7 @@ module Hass {
   var refreshFailed = false;
   var _offQueue = new [0];
   var _offBusy = false;
+  var _bulkType = null;
   var _refreshHadError = false;
   var _refreshBusy = false;
 
@@ -56,18 +57,38 @@ module Hass {
     return targets;
   }
 
-  function turnOffLightsAndFans() {
+  function getDoorText(counts) {
+    if (counts[0] == 0) { return "Not configured"; }
+    var text = counts[1] == counts[0] ? "All locked" : (counts[0] - counts[1] - counts[2]) + " unlocked";
+    if (counts[2] > 0) { text += " / " + counts[2] + " unknown"; }
+    return text;
+  }
+
+  function getGroupTargets(type) {
+    var targets = new [0];
+    if (type != TYPE_LIGHT && type != TYPE_FAN && type != TYPE_LOCK) { return targets; }
+    var entities = getEntitiesByTypes([type]);
+    for (var i = 0; i < entities.size(); i++) {
+      if (!entities[i].isExternal()) { targets.add(entities[i]); }
+    }
+    return targets;
+  }
+
+  function turnOffLightsAndFans() { runGroupAction(null); }
+
+  function runGroupAction(type) {
     if (_offBusy || _refreshBusy) {
       App.getApp().viewController.showError("Refreshing status\nTry again shortly");
       return;
     }
-    _offQueue = getAllOffTargets();
+    _offQueue = type == null ? getAllOffTargets() : getGroupTargets(type);
+    _bulkType = type;
     if (_offQueue.size() == 0) {
-      App.getApp().viewController.showError("Import lights and fans\nfrom Settings first");
+      App.getApp().viewController.showError("Import devices\nfrom Settings first");
       return;
     }
     _offBusy = true;
-    App.getApp().viewController.showLoader("Turning off");
+    App.getApp().viewController.showLoader(type == TYPE_LOCK ? "Locking all" : "Turning off");
     _onAllOffCompleted(null, null);
   }
 
@@ -83,8 +104,9 @@ module Hass {
     if (_offQueue.size() > 0) {
       var entity = _offQueue[0];
       _offQueue.remove(entity);
-      client.setEntityState(entity.getId(), entity.getType() == TYPE_LIGHT ? "light" : "fan",
-        Client.ENTITY_ACTION_TURN_OFF, Utils.method(Hass, :_onAllOffCompleted));
+      var domain = entity.getType() == TYPE_LOCK ? "lock" : (entity.getType() == TYPE_LIGHT ? "light" : "fan");
+      var action = _bulkType == TYPE_LOCK ? Client.ENTITY_ACTION_LOCK : Client.ENTITY_ACTION_TURN_OFF;
+      client.setEntityState(entity.getId(), domain, action, Utils.method(Hass, :_onAllOffCompleted));
       return;
     }
     _offBusy = false;
@@ -313,7 +335,7 @@ module Hass {
     if (state != null) {
       entity.setState(state);
     } else {
-      entity.setState(Entity.STATE_UNKNOWN);
+      entity.setState(Hass.STATE_UNKNOWN);
     }
 
     if (sensorClass != null) {
@@ -529,74 +551,74 @@ module Hass {
     var action = null;
     var loadingText = "Loading";
 
-    if (entity.getType() == Entity.TYPE_BINARY_SENSOR) {
+    if (entity.getType() == Hass.TYPE_BINARY_SENSOR) {
         // binary_sensor cannot be set, only read
         return;
     }
-    if (entity.getType() == Entity.TYPE_SENSOR) {
+    if (entity.getType() == Hass.TYPE_SENSOR) {
       // binary_sensor cannot be set, only read
       return;
     }
 
-    if (entity.getType() == Entity.TYPE_SCRIPT) {
+    if (entity.getType() == Hass.TYPE_SCRIPT) {
       action = Client.ENTITY_ACTION_TURN_ON;
       loadingText = "Running";
-    } else if (entity.getType() == Entity.TYPE_LOCK) {
-      if (currentState == Entity.STATE_UNLOCKED) {
+    } else if (entity.getType() == Hass.TYPE_LOCK) {
+      if (currentState == Hass.STATE_UNLOCKED) {
         action = Client.ENTITY_ACTION_LOCK;
         loadingText = "Locking";
-      } else if (currentState == Entity.STATE_LOCKED) {
+      } else if (currentState == Hass.STATE_LOCKED) {
         action = Client.ENTITY_ACTION_UNLOCK;
         loadingText = "Unlocking";
       }
-    } else if (entity.getType() == Entity.TYPE_VALVE) {
-      if (currentState == Entity.STATE_OPEN) {
+    } else if (entity.getType() == Hass.TYPE_VALVE) {
+      if (currentState == Hass.STATE_OPEN) {
         action = Client.ENTITY_ACTION_CLOSE;
         loadingText = "Closing";
-      } else if (currentState == Entity.STATE_CLOSED) {
+      } else if (currentState == Hass.STATE_CLOSED) {
         action = Client.ENTITY_ACTION_OPEN;
         loadingText = "Opening";
       }
-    } else if (entity.getType() == Entity.TYPE_COVER) {
+    } else if (entity.getType() == Hass.TYPE_COVER) {
       action = Client.ENTITY_ACTION_COVER_TOGGLE;
       loadingText = "Toggling";
-    } else if (entity.getType() == Entity.TYPE_BUTTON || entity.getType() == Entity.TYPE_INPUT_BUTTON) {
+    } else if (entity.getType() == Hass.TYPE_BUTTON || entity.getType() == Hass.TYPE_INPUT_BUTTON) {
       action = Client.ENTITY_ACTION_PRESS;
       loadingText = "Pressing";
     } else {
-      if (currentState == Entity.STATE_ON) {
+      if (currentState == Hass.STATE_ON) {
         action = Client.ENTITY_ACTION_TURN_OFF;
         loadingText = "Turning off";
-      } else if (currentState == Entity.STATE_OFF) {
+      } else if (currentState == Hass.STATE_OFF) {
         action = Client.ENTITY_ACTION_TURN_ON;
         loadingText = "Turning on";
       }
     }
 
-    if (entity.getType() == Entity.TYPE_SCENE) {
+    if (entity.getType() == Hass.TYPE_SCENE) {
       entityType = "scene";
       action = null;
-    } else if (entity.getType() == Entity.TYPE_LIGHT) {
+    } else if (entity.getType() == Hass.TYPE_LIGHT) {
       entityType = "light";
-    } else if (entity.getType() == Entity.TYPE_SWITCH) {
+    } else if (entity.getType() == Hass.TYPE_SWITCH) {
       entityType = "switch";
-    } else if (entity.getType() == Entity.TYPE_VALVE) {
+    } else if (entity.getType() == Hass.TYPE_VALVE) {
       entityType = "valve";
-    } else if (entity.getType() == Entity.TYPE_AUTOMATION) {
+    } else if (entity.getType() == Hass.TYPE_AUTOMATION) {
       entityType = "automation";
-    } else if (entity.getType() == Entity.TYPE_SCRIPT) {
+    } else if (entity.getType() == Hass.TYPE_SCRIPT) {
       entityType = "script";
-    } else if (entity.getType() == Entity.TYPE_LOCK) {
+    } else if (entity.getType() == Hass.TYPE_LOCK) {
       entityType = "lock";
-    } else if (entity.getType() == Entity.TYPE_COVER) {
+    } else if (entity.getType() == Hass.TYPE_COVER) {
       entityType = "cover";
-    } else if (entity.getType() == Entity.TYPE_FAN) {
+    } else if (entity.getType() == Hass.TYPE_FAN) {
       entityType = "fan";
-    } else if (entity.getType() == Entity.TYPE_INPUT_BOOLEAN) {
+    } else if (entity.getType() == Hass.TYPE_INPUT_BOOLEAN) {
       entityType = "input_boolean";
-    } else if (entity.getType() == Entity.TYPE_BUTTON) {
+    } else if (entity.getType() == Hass.TYPE_BUTTON) {
       entityType = "button";
-    } else if (entity.getType() == Entity.TYPE_INPUT_BUTTON) {
+    } else if (entity.getType() == Hass.TYPE_INPUT_BUTTON) {
       entityType = "input_button";
     }
 
