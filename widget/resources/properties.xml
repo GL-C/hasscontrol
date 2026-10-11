@@ -1,5 +1,6 @@
 <resources>
     <properties>
+        <property id="darkTheme" type="boolean">false</property>
         <property id="host" type="string">https://hassio.url</property>
         <!-- <property id="port" type="number">443</property> -->
         <property id="accessToken" type="string"></property>
@@ -14,6 +15,7 @@
     </properties>
 
     <strings>
+       <string id="dark_theme_title">Dark home screen (off = light)</string>
        <string id="host_title">Host: (https://hassio.url)</string>
        <!-- <string id="port_title">Port: (443 is default for https)</string> -->
        <string id="access_token">Long-lived access token (optional)</string>
@@ -28,6 +30,9 @@
     </strings>
 
     <settings>
+        <setting propertyKey="@Properties.darkTheme" title="@Strings.dark_theme_title">
+            <settingConfig type="boolean" />
+        </setting>
         <setting propertyKey="@Properties.host" title="@Strings.host_title">
             <settingConfig type="alphaNumeric" />
         </setting>
