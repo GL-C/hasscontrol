@@ -7,6 +7,7 @@ using Hass;
 
 
 class HassControlApp extends App.AppBase {
+  static const HOME_VIEW = "home";
   static const SCENES_VIEW = "scenes";
   static const ENTITIES_VIEW = "entities";
   static const ENTITIES_SCENES_VIEW = "entities_scenes";
@@ -32,6 +33,10 @@ class HassControlApp extends App.AppBase {
   function launchInitialView() {
     var initialView = getStartView();
 
+    if (initialView.equals(HassControlApp.HOME_VIEW)) {
+      return viewController.pushHomeView();
+    }
+
     if (initialView.equals(HassControlApp.ENTITIES_VIEW)) {
       return viewController.pushEntityView();
     }
@@ -46,8 +51,8 @@ class HassControlApp extends App.AppBase {
   }
 
   function onSettingsChanged() {
-    Hass.loadScenesFromSettings();
     Hass.client.onSettingsChanged();
+    Hass.loadScenesFromSettings();
 
     // Restart inactivity timer with new setting value
     resetInactivityTimer();
@@ -79,6 +84,10 @@ class HassControlApp extends App.AppBase {
   function getStartView() {
     var startView = App.Storage.getValue(HassControlApp.STORAGE_KEY_START_VIEW);
 
+    if (startView != null && startView.equals(HassControlApp.HOME_VIEW)) {
+      return HassControlApp.HOME_VIEW;
+    }
+
     if (startView != null && startView.equals(HassControlApp.SCENES_VIEW)) {
       return HassControlApp.SCENES_VIEW;
     } else if (startView != null && startView.equals(HassControlApp.ENTITIES_VIEW)) {
@@ -88,11 +97,13 @@ class HassControlApp extends App.AppBase {
       return HassControlApp.ENTITIES_SCENES_VIEW;
     }
 
-    return HassControlApp.ENTITIES_VIEW;
+    return HassControlApp.HOME_VIEW;
   }
 
   function setStartView(newStartView) {
-    if (newStartView.equals(HassControlApp.ENTITIES_VIEW)) {
+    if (newStartView.equals(HassControlApp.HOME_VIEW)) {
+      App.Storage.setValue(HassControlApp.STORAGE_KEY_START_VIEW, HassControlApp.HOME_VIEW);
+    } else if (newStartView.equals(HassControlApp.ENTITIES_VIEW)) {
       App.Storage.setValue(
         HassControlApp.STORAGE_KEY_START_VIEW,
         HassControlApp.ENTITIES_VIEW
@@ -147,6 +158,12 @@ class HassControlApp extends App.AppBase {
       if (deviceSettings.isGlanceModeEnabled) {
         var initialView = getStartView();
 
+        if (initialView.equals(HassControlApp.HOME_VIEW)) {
+          var homeView = viewController.getHomeView();
+          view = homeView[0];
+          delegate = homeView[1];
+        }
+
         if (initialView.equals(HassControlApp.ENTITIES_VIEW)) {
           var entityView = viewController.getEntityView();
           view = entityView[0];
@@ -166,8 +183,14 @@ class HassControlApp extends App.AppBase {
     }
 
     if (view == null || delegate == null) {
-      view = new BaseView();
-      delegate = new BaseDelegate();
+      if (getStartView().equals(HassControlApp.HOME_VIEW)) {
+        var home = viewController.getHomeView();
+        view = home[0];
+        delegate = home[1];
+      } else {
+        view = new BaseView();
+        delegate = new BaseDelegate();
+      }
     }
 
     var battery_entity_id = App.Properties.getValue("report_battery_id");

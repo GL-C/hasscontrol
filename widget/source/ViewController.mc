@@ -37,6 +37,20 @@ class ViewController {
     return _loaderActive != null && !_errorView.isActive() && !_loginView.isActive();
   }
 
+  function getHomeView() {
+    return [new HomeView(), new HomeDelegate()];
+  }
+
+  function pushHomeView() {
+    var view = getHomeView();
+    Ui.pushView(view[0], view[1], Ui.SLIDE_IMMEDIATE);
+  }
+
+  function switchHomeView() {
+    var view = getHomeView();
+    Ui.switchToView(view[0], view[1], Ui.SLIDE_IMMEDIATE);
+  }
+
   function getSceneView() {
     var controller = new EntityListController(
       [Hass.TYPE_SCENE]
